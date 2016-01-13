@@ -105,12 +105,15 @@ message(From, To, Packet) ->
 					case catch Body of
 						<<>> -> ok; %% There is no body
 						_ ->
-							Result = mnesia:dirty_read(gcm_users, {ToUser, ToServer}),
-							case catch Result of 
-								[] -> ?DEBUG("mod_gcm: No such record found for ~s", [JTo]);
-								[#gcm_users{gcm_key = API_KEY}] ->
-									Args = [{"registration_id", API_KEY}, {"data.message", Body}, {"data.source", JFrom}, {"data.destination", JTo}],
+							case ejabberd_odbc:sql_query(LServer,
+	 																				[<<"select gcm_key from gcm_users where "
+				    																"user='">>,
+				  																JTo, <<"';">>])
+									of
+      					{selected, [<<"gcm_key">>], [[API_KEY]]} -> 
+      						Args = [{"registration_id", API_KEY}, {"data.message", Body}, {"data.source", JFrom}, {"data.destination", JTo}],
 									send(Args, ejabberd_config:get_global_option(gcm_api_key, fun(V) -> V end))
+      					_ -> undefined
 							end
 						end;
 					_ -> ok
