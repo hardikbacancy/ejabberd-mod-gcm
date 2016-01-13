@@ -94,7 +94,7 @@ message(From, To, Packet) ->
 			JTo = jlib:jid_to_string(To#jid{user = To#jid.user, server = To#jid.server, resource = <<"">>}),
 			ToUser = To#jid.user,
 			ToServer = To#jid.server,
-
+			LServer = jlib:nameprep(ToServer),
 			Body = xml:get_path_s(Packet, [{elem, <<"body">>}, cdata]),
 
 			%% Checking subscription
@@ -106,9 +106,9 @@ message(From, To, Packet) ->
 						<<>> -> ok; %% There is no body
 						_ ->
 							case ejabberd_odbc:sql_query(LServer,
-	 																				[<<"select gcm_key from gcm_users where "
-				    																"user='">>,
-				  																JTo, <<"';">>])
+														[<<"select gcm_key from gcm_users where "
+															"user='">>,
+															JTo, <<"';">>])
 									of
       					{selected, [<<"gcm_key">>], [[API_KEY]]} -> 
       						Args = [{"registration_id", API_KEY}, {"data.message", Body}, {"data.source", JFrom}, {"data.destination", JTo}],
