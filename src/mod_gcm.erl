@@ -134,17 +134,17 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 
 	case catch mnesia:dirty_read(gcm_users, {LUser, LServer}) of
 		[] ->
-			mnesia:transaction(F),
+		 	ejabberd_odbc:sql_transaction(LServer, F).
 			?DEBUG("mod_gcm: New user registered ~s@~s", [LUser, LServer]);
 
 		%% Record exists, the key is equal to the one we know
 		[#gcm_users{user={LUser, LServer}, gcm_key=API_KEY}] ->
-			mnesia:transaction(F),
+			ejabberd_odbc:sql_transaction(LServer, F),
 			?DEBUG("mod_gcm: Updating last_seen for user ~s@~s", [LUser, LServer]);
 
 		%% Record for this key was found, but for another key
 		[#gcm_users{user={LUser, LServer}, gcm_key=_KEY}] ->
-			mnesia:transaction(F),
+			ejabberd_odbc:sql_transaction(LServer, F),
 			?DEBUG("mod_gcm: Updating gcm_key for user ~s@~s", [LUser, LServer])
 		end,
 	
