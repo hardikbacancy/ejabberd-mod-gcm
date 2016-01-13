@@ -124,28 +124,52 @@ message(From, To, Packet) ->
 iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	LUser = jlib:nodeprep(User),
 	LServer = jlib:nameprep(Server),
+	JUser = jlib:jid_to_string(User,Server,""),
 
 	{MegaSecs, Secs, _MicroSecs} = now(),
 	TimeStamp = MegaSecs * 1000000 + Secs,
 
 	API_KEY = xml:get_tag_cdata(xml:get_subtag(SubEl, <<"key">>)),
 
-	F = fun() -> mnesia:write(#gcm_users{user={LUser, LServer}, gcm_key=API_KEY, last_seen=TimeStamp}) end,
+	%% INSERT CASE
+	F = fun() ->  ejabberd_odbc:sql_query(LServer,
+			    [<<"insert into gcm_users(user, gcm_key, last_seen) "
+			       "values ('">>,
+			     JUser, <<"', '">>, API_KEY, <<"', '">>, TimeStamp, <<"');">>]) 
+	end,
 
-	case catch mnesia:dirty_read(gcm_users, {LUser, LServer}) of
+	%% UPDATE CASE
+	F2 = fun () ->
+				odbc_queries:update_t(<<"gcm_users">>,
+					   	[<<"last_seen">>],
+				   		[TimeStamp],
+					   [<<"user='">>, JUser,
+					    <<"'">>])
+  	end),
+
+	case ejabberd_odbc:sql_query(LServer,
+								[<<"select gcm_key from gcm_users where "
+									"user='">>,
+									JUser, <<"';">>])
+									of
 		[] ->
 		 	ejabberd_odbc:sql_transaction(LServer, F).
 			?DEBUG("mod_gcm: New user registered ~s@~s", [LUser, LServer]);
 
 		%% Record exists, the key is equal to the one we know
-		[#gcm_users{user={LUser, LServer}, gcm_key=API_KEY}] ->
-			ejabberd_odbc:sql_transaction(LServer, F),
+		{selected, [<<"gcm_key">>], [[gcm_key=API_KEY]]} ->
+			ejabberd_odbc:sql_transaction(LServer, F2),
 			?DEBUG("mod_gcm: Updating last_seen for user ~s@~s", [LUser, LServer]);
 
 		%% Record for this key was found, but for another key
-		[#gcm_users{user={LUser, LServer}, gcm_key=_KEY}] ->
-			ejabberd_odbc:sql_transaction(LServer, F),
+		{selected, [<<"gcm_key">>], [[gcm_key=_KEY]]} ->
+			ejabberd_odbc:sql_transaction(LServer, F2),
 			?DEBUG("mod_gcm: Updating gcm_key for user ~s@~s", [LUser, LServer])
+
+		%% TODO: Review this case
+		_ ->
+		 	ejabberd_odbc:sql_transaction(LServer, F).
+			?DEBUG("mod_gcm: New user registered ~s@~s", [LUser, LServer]);
 		end,
 	
 	IQ#iq{type=result, sub_el=[]}. %% We don't need the result, but the handler have to send something.
