@@ -1,5 +1,8 @@
 mod_gcm
 =====
+
+**This is a fork from the mrDoctorWho repo to change the database used from Mnesia to MySQL**
+
 mod_gcm is an ejabberd module to send offline messages as PUSH notifications for Android using Google Cloud Messaging API.
 
 > Consider using [mod_push](https://github.com/royneary/mod_push) which implements [XEP-0357](http://xmpp.org/extensions/xep-0357.html) and works with many PUSH services.
