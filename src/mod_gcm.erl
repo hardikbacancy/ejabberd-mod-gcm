@@ -113,7 +113,6 @@ message(From, To, Packet) ->
       					{selected, [<<"gcm_key">>], [[API_KEY]]} -> 
       						Args = [{"registration_id", API_KEY}, {"data.message", Body}, {"data.source", JFrom}, {"data.destination", JTo}],
 									send(Args, ejabberd_config:get_global_option(gcm_api_key, fun(V) -> V end))
-      					_ -> undefined
 							end
 						end;
 					_ -> ok
@@ -124,7 +123,7 @@ message(From, To, Packet) ->
 iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubEl} = IQ) ->
 	LUser = jlib:nodeprep(User),
 	LServer = jlib:nameprep(Server),
-	JUser = jlib:jid_to_string(User,Server,""),
+	JUser = jlib:jid_to_string(From#jid{user = From#jid.user, server = From#jid.server, resource = <<"">>}),
 
 	{MegaSecs, Secs, _MicroSecs} = now(),
 	TimeStamp = MegaSecs * 1000000 + Secs,
@@ -135,17 +134,16 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 	F = fun() ->  ejabberd_odbc:sql_query(LServer,
 			    [<<"insert into gcm_users(user, gcm_key, last_seen) "
 			       "values ('">>,
-			     JUser, <<"', '">>, API_KEY, <<"', '">>, TimeStamp, <<"');">>]) 
+			     JUser, <<"', '">>, API_KEY, <<"', '">>, integer_to_list(TimeStamp), <<"');">>]) 
 	end,
 
 	%% UPDATE CASE
-	F2 = fun () ->
-				odbc_queries:update_t(<<"gcm_users">>,
+	F2 = fun() ->	odbc_queries:update_t(<<"gcm_users">>,
 					   	[<<"last_seen">>],
-				   		[TimeStamp],
+				   		["123"],
 					   [<<"user='">>, JUser,
 					    <<"'">>])
-  	end),
+  	end,
 
 	case ejabberd_odbc:sql_query(LServer,
 								[<<"select gcm_key from gcm_users where "
@@ -153,23 +151,19 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 									JUser, <<"';">>])
 									of
 		[] ->
-		 	ejabberd_odbc:sql_transaction(LServer, F).
+		 	ejabberd_odbc:sql_transaction(LServer, F),
 			?DEBUG("mod_gcm: New user registered ~s@~s", [LUser, LServer]);
 
 		%% Record exists, the key is equal to the one we know
-		{selected, [<<"gcm_key">>], [[gcm_key=API_KEY]]} ->
+		{selected, [<<"gcm_key">>], [[API_KEY]]} ->
 			ejabberd_odbc:sql_transaction(LServer, F2),
-			?DEBUG("mod_gcm: Updating last_seen for user ~s@~s", [LUser, LServer]);
+			?DEBUG("mod_gcm: Updating last_seen for user ~s@~s:~s", [LUser, LServer, API_KEY]);
 
 		%% Record for this key was found, but for another key
-		{selected, [<<"gcm_key">>], [[gcm_key=_KEY]]} ->
-			ejabberd_odbc:sql_transaction(LServer, F2),
-			?DEBUG("mod_gcm: Updating gcm_key for user ~s@~s", [LUser, LServer])
+		{selected, [<<"gcm_key">>], []} ->
+			ejabberd_odbc:sql_transaction(LServer, F),
+			?DEBUG("mod_gcm: Updating gcm_key for user ~s@~s:~s", [LUser, LServer, API_KEY])
 
-		%% TODO: Review this case
-		_ ->
-		 	ejabberd_odbc:sql_transaction(LServer, F).
-			?DEBUG("mod_gcm: New user registered ~s@~s", [LUser, LServer]);
 		end,
 	
 	IQ#iq{type=result, sub_el=[]}. %% We don't need the result, but the handler have to send something.
