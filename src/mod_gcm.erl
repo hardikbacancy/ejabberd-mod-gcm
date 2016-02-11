@@ -1,5 +1,6 @@
 %% Google Cloud Messaging for Ejabberd
 %% Created: 02/08/2015 by mrDoctorWho
+%% Forked: 13/01/2016 by joanlopez
 %% License: MIT/X11
 
 -module(mod_gcm).
