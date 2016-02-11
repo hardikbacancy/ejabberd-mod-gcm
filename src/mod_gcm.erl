@@ -141,7 +141,7 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 	%% UPDATE CASE
 	F2 = fun() ->	odbc_queries:update_t(<<"gcm_users">>,
 					   	[<<"last_seen">>],
-				   		["123"],
+				   		[integer_to_list(TimeStamp)],
 					   [<<"user='">>, JUser,
 					    <<"'">>])
   	end,
