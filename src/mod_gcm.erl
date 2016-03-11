@@ -12,13 +12,11 @@
 
 -behaviour(gen_mod).
 
--record(gcm_users, {user, gcm_key, last_seen}).
-
-
--define(NS_GCM, "https://android.googleapis.com/gcm"). %% I hope Google doesn't mind.
+%% TODO: Improve it
+-define(NS_GCM, "https://gcm-http.googleapis.com/gcm").
+-define(OLD_NS_GCM, "https://android.googleapis.com/gcm").
 -define(GCM_URL, ?NS_GCM ++ "/send").
--define(CONTENT_TYPE, "application/x-www-form-urlencoded;charset=UTF-8").
-
+-define(CONTENT_TYPE, "application/json").
 
 -export([start/2, stop/1, message/3, iq/3]).
 
@@ -67,9 +65,8 @@ url_encode([{Key,Value}|R],Acc) ->
 
 
 %% Send an HTTP request to Google APIs and handle the response
-send([{Key, Value}|R], API_KEY) ->
+send(Body, API_KEY) ->
 	Header = [{"Authorization", url_encode([{"key", API_KEY}])}],
-	Body = url_encode([{Key, Value}|R]),
 	ssl:start(),
 	application:start(inets),
 	{ok, RawResponse} = httpc:request(post, {?GCM_URL, Header, ?CONTENT_TYPE, Body}, [], []),
@@ -111,12 +108,16 @@ message(From, To, Packet) ->
 															"user='">>,
 															JTo, <<"';">>])
 									of
-      					{selected, [<<"gcm_key">>], [[API_KEY]]} -> 
-      						Args = [{"registration_id", API_KEY}, {"data.message", Body}, {"data.source", JFrom}, {"data.destination", JTo}],
-									send(Args, ejabberd_config:get_global_option(gcm_api_key, fun(V) -> V end))
+
+								{selected, [<<"gcm_key">>], [[API_KEY]]} -> 
+									%% TODO: Improve it
+									BodyMessage = "{\"to\":\"" ++ binary_to_list(API_KEY) ++ "\",\"data\": {\"message\":\"New message\"}}",
+									send(BodyMessage, ejabberd_config:get_global_option(gcm_api_key, fun(V) -> V end));
+								{selected, [<<"gcm_key">>], []} ->
+									?DEBUG("No existing key for this user - maybe iOS?",[])
 							end
-						end;
-					_ -> ok
+					end;
+				_ -> ok
 			end
 	end.
 
@@ -188,7 +189,7 @@ start(Host, Opts) ->
 	case catch ejabberd_config:get_global_option(gcm_api_key, fun(V) -> V end) of
 		undefined -> ?ERROR_MSG("There is no API_KEY set! The GCM module won't work without the KEY!", []);
 		_ ->
-			gen_iq_handler:add_iq_handler(ejabberd_local, Host, <<?NS_GCM>>, ?MODULE, iq, no_queue),
+			gen_iq_handler:add_iq_handler(ejabberd_local, Host, <<?OLD_NS_GCM>>, ?MODULE, iq, no_queue),
 			ejabberd_hooks:add(offline_message_hook, Host, ?MODULE, message, 49),
 			?INFO_MSG("mod_gcm Has started successfully!", []),
 			ok
