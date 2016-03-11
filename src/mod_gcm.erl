@@ -138,12 +138,13 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 			     JUser, <<"', '">>, API_KEY, <<"', '">>, integer_to_list(TimeStamp), <<"');">>]) 
 	end,
 
-	%% UPDATE CASE
-	F2 = fun() ->	odbc_queries:update_t(<<"gcm_users">>,
-					   	[<<"last_seen">>],
-				   		[integer_to_list(TimeStamp)],
-					   [<<"user='">>, JUser,
-					    <<"'">>])
+	%% UPDATE LAST_SEEN CASE
+	F2 = fun() ->	ejabberd_odbc:sql_query(LServer,
+					   	[<<"update gcm_users set "
+						"last_seen='">>,
+				   		integer_to_list(TimeStamp), <<"' where "
+					   	"user='">>, 
+						JUser, <<"';">>])
   	end,
 
 	case ejabberd_odbc:sql_query(LServer,
@@ -151,19 +152,31 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 									"user='">>,
 									JUser, <<"';">>])
 									of
-		[] ->
-		 	ejabberd_odbc:sql_transaction(LServer, F),
-			?DEBUG("mod_gcm: New user registered ~s@~s", [LUser, LServer]);
 
-		%% Record exists, the key is equal to the one we know
-		{selected, [<<"gcm_key">>], [[API_KEY]]} ->
-			ejabberd_odbc:sql_transaction(LServer, F2),
-			?DEBUG("mod_gcm: Updating last_seen for user ~s@~s:~s", [LUser, LServer, API_KEY]);
+		%% User exists
+		{selected, [<<"gcm_key">>], [[KEY]]} ->
+			if
+			    API_KEY /= KEY ->
+				%% UPDATE KEY CASE
+				F3 = fun() -> ejabberd_odbc:sql_query(LServer,
+									[<<"update gcm_users set "
+									"gcm_key='">>,
+									API_KEY, <<"' where "
+									"user='">>,
+									JUser, <<"';">>])
+				end,
+				ejabberd_odbc:sql_transaction(LServer, F3),
+				?DEBUG("mod_gcm: Updating key for user ~s@~s", [LUser, LServer]);
 
-		%% Record for this key was found, but for another key
+			    true ->
+				ejabberd_odbc:sql_transaction(LServer, F2),
+			        ?DEBUG("mod_gcm: Updating timestamp for user ~s@~s", [LUser, LServer])
+			end;
+
+		%% User does not exists
 		{selected, [<<"gcm_key">>], []} ->
 			ejabberd_odbc:sql_transaction(LServer, F),
-			?DEBUG("mod_gcm: Updating gcm_key for user ~s@~s:~s", [LUser, LServer, API_KEY])
+			?DEBUG("mod_gcm: Registered new token: ~s@~s:~s", [LUser, LServer, API_KEY])
 
 		end,
 	
