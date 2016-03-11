@@ -169,6 +169,7 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 				?DEBUG("mod_gcm: Updating key for user ~s@~s", [LUser, LServer]);
 
 			    true ->
+				%% UPDATE TIMESTAMP CASE
 				ejabberd_odbc:sql_transaction(LServer, F2),
 			        ?DEBUG("mod_gcm: Updating timestamp for user ~s@~s", [LUser, LServer])
 			end;
@@ -184,7 +185,6 @@ iq(#jid{user = User, server = Server} = From, To, #iq{type = Type, sub_el = SubE
 
 
 start(Host, Opts) -> 
-	mnesia:create_table(gcm_users, [{disc_copies, [node()]}, {attributes, record_info(fields, gcm_users)}]),
 	case catch ejabberd_config:get_global_option(gcm_api_key, fun(V) -> V end) of
 		undefined -> ?ERROR_MSG("There is no API_KEY set! The GCM module won't work without the KEY!", []);
 		_ ->
